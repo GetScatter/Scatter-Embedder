@@ -2,7 +2,7 @@
   "name": "scatter-embedder",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "embedder.js",
   "scripts": {
     "test": "mocha embedder.spec.js --timeout 1000000"
   },
