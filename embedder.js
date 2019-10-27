@@ -38,7 +38,7 @@ const HASH_ERR = `The hash created from the web wallet embed does not match the 
 
 
 const saveSource = async (filename, file) => {
-	const sourcePath = `${await FILES.getDefaultPath()}`;
+	const sourcePath = `${await FILES.getDefaultPath()}/cached_sources`;
 	await FILES.existsOrMkdir(sourcePath);
 	return FILES.saveFile(sourcePath, filename, file);
 };
