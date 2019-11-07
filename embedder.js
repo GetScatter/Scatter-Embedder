@@ -179,8 +179,14 @@ class Embedder {
 
 	// TODO: Remove old files from previous builds which are no longer needed.
 	// Otherwise they will conflict with `checkCachedHashes` since files on the server would be missing.
-	static async removeDanglingFiles(){
-
+	static async removeDanglingFiles(filesListFromServer){
+		const localFiles = await Embedder.getLocalFiles();
+		for(let i = 0; i < localFiles.length; i++){
+			if(!filesListFromServer.includes(localFiles[i])){
+				console.log('removing file', localFiles[i]);
+				await FILES.removeFile(`${await FILES.getDefaultPath()}/${localFiles[i]}`)
+			}
+		}
 	}
 
 	static async cacheEmbedFiles(cacheFromScratch = false){
