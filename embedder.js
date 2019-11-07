@@ -97,7 +97,7 @@ class Embedder {
 	}
 
 	static async getLocalFiles(){
-		return await FILES.getFilesForDirectory(`${await FILES.getDefaultPath()}`)
+		return await FILES.getFilesForDirectory(`${await FILES.getDefaultPath()}/cached_sources`)
 			.then(files => files.filter(filterFiles))
 	}
 
@@ -184,7 +184,7 @@ class Embedder {
 		for(let i = 0; i < localFiles.length; i++){
 			if(!filesListFromServer.includes(localFiles[i])){
 				console.log('removing file', localFiles[i]);
-				await FILES.removeFile(`${await FILES.getDefaultPath()}/${localFiles[i]}`)
+				await FILES.removeFile(`${await FILES.getDefaultPath()}/cached_sources/${localFiles[i]}`)
 			}
 		}
 	}
