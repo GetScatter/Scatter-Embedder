@@ -66,6 +66,25 @@ const hashStat = async (filename, verified, filesLength) => {
 	else console.log('hashstat', hashstat);
 };
 
+const alignImportableHosts = (file, revert = false) => {
+	if(!revert){
+
+		// Applying absolute URLs to relative static assets.
+		// Note: These files won't be available if Embed is down, however they are all purely aesthetic.
+		// This saves the user from download another 3+mb of data which will be static anyway.
+		file = file.replace(/static\/assets\//g, `${HOST}/static/assets/`);
+		file = file.replace(/static\/fonts\/fa-/g, `${HOST}/static/fonts/fa-`);
+	} else {
+		// We need to revert the static absolute path overwrites for this to verify hashes properly.
+		// file = file.replace(/https:\/\/embed.get-scatter.com\/static\/assets\//g, "static/assets/");
+		// file = file.replace(/https:\/\/embed.get-scatter.com\/static\/fonts\//g, "static/fonts/");
+		file = file.replace(new RegExp(`${HOST.replace(/\//, '\\/')}\/static\/assets\/`, 'g'), "static/assets/");
+		file = file.replace(new RegExp(`${HOST.replace(/\//, '\\/')}\/static\/fonts\/fa-`, 'g'), "static/fonts/fa-");
+	}
+
+	return file;
+};
+
 class Embedder {
 
 	static init(
@@ -123,7 +142,7 @@ class Embedder {
 	// which is always the last file that is cached.
 	static async hasLocalVersion(){
 		if(LOCAL_TESTING) return true;
-		return FILES.openFile(`${await FILES.getDefaultPath()}/embed.timestamp`).then(x => !!x).catch(() => null)
+		return FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/embed.timestamp`).then(x => !!x).catch(() => null)
 	}
 
 	// Checks if a version is available using a timestamp file which matches when the
@@ -131,7 +150,7 @@ class Embedder {
 	static async versionAvailable(){
 		if(LOCAL_TESTING) return false;
 
-		const localTimestamp = await FILES.openFile(`${await FILES.getDefaultPath()}/embed.timestamp`).catch(() => null);
+		const localTimestamp = await FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/embed.timestamp`).catch(() => null);
 		if(!localTimestamp) return true;
 		const serverTimestamp = await getSource(`hashes/embed.timestamp`).then(x => x.file.trim()).catch(() => null);
 		if(!serverTimestamp) return true;
@@ -160,11 +179,10 @@ class Embedder {
 
 		await Promise.all(filesList.map(async filename => {
 
-			let file = await FILES.openFile(`${await FILES.getDefaultPath()}/${filename}`).catch(() => null);
+			let file = await FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/${filename}`).catch(() => null);
 			if(!file) return console.log('missing file', filename, file);
 
-			// We need to revert the static absolute path overwrites for this to verify hashes properly.
-			file = file.replace(/https:\/\/embed.get-scatter.com\/static\/assets\//g, "static/assets/");
+			file = alignImportableHosts(file, true);
 
 			if(await this.fileVerified(filename, file)) verified++;
 			else console.log('bad verification', filename)
@@ -179,14 +197,8 @@ class Embedder {
 
 	// TODO: Remove old files from previous builds which are no longer needed.
 	// Otherwise they will conflict with `checkCachedHashes` since files on the server would be missing.
-	static async removeDanglingFiles(filesListFromServer){
-		const localFiles = await Embedder.getLocalFiles();
-		for(let i = 0; i < localFiles.length; i++){
-			if(!filesListFromServer.includes(localFiles[i])){
-				console.log('removing file', localFiles[i]);
-				await FILES.removeFile(`${await FILES.getDefaultPath()}/cached_sources/${localFiles[i]}`)
-			}
-		}
+	static async removeDanglingFiles(){
+
 	}
 
 	static async cacheEmbedFiles(cacheFromScratch = false){
@@ -211,10 +223,7 @@ class Embedder {
 			if(await this.fileVerified(filename, result.file)){
 				await cacheETAG(filename, result.etag);
 
-				// Applying absolute URLs to relative static assets.
-				// Note: These files won't be available if Embed is down, however they are all purely aesthetic.
-				// This saves the user from download another 3+mb of data which will be static anyway.
-				result.file = result.file.replace(/static\/assets\//g, "https://embed.get-scatter.com/static/assets/");
+				result.file = alignImportableHosts(result.file);
 
 				// Saving the source locally for quicker use and fallback for later hash verification failures.
 				// This makes it so the user's local Scatter can never "not work" just because the online Embed is down.
@@ -245,7 +254,7 @@ class Embedder {
 
 		const checkFile = async filename => {
 			if(error) return false;
-			if(!cacheFromScratch && await checkEtag(filename) && await FILES.exists(`${await FILES.getDefaultPath()}/${filename}`)) return true;
+			if(!cacheFromScratch && await checkEtag(filename) && await FILES.exists(`${await FILES.getDefaultPath()}/cached_sources/${filename}`)) return true;
 			else return await checkFileHash(filename);
 		};
 
@@ -310,7 +319,7 @@ class Embedder {
 			else {
 				if(!await PROMPTER(
 					'Some of your local files had mismatched hashes.',
-					`It looks like some of the files you have locally don't match the hashes of the current embed version, but your version says it's up to date. 
+					`It looks like some of the files you have locally don't match the hashes of the current embed version, but your version says it's up to date.
 				 Do you want to continue using your local version instead of trying to re-pull the current embed?`
 				)) hasEmbed = true;
 				else await updateLocalFiles(true);

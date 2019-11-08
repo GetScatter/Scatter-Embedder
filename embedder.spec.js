@@ -8,7 +8,7 @@ const fs = require('fs');
 const Embedder = require('./embedder');
 
 // const HOST = 'http://10.0.0.3:8091';
-const HOST = 'https://embed.get-scatter.com';
+const HOST = 'http://staging.embed.get-scatter.com';
 const PROOFS = ['EOS57fs1Mi7RrMChZ9GsxsCYqG22y9PjnmCnakLMALuA8qM3qKcwG'];
 const FILES = {
 	getDefaultPath: async () => './test_data',
@@ -119,7 +119,7 @@ describe('embedder', () => {
 
 	it('should say there is a new version if the timestamp is in the past', done => {
 		new Promise(async () => {
-			await FILES.saveFile(await FILES.getDefaultPath(), 'embed.timestamp', '10000');
+			await FILES.saveFile(`${await FILES.getDefaultPath()}/cached_sources`, 'embed.timestamp', '10000');
 
 			// Check console for prompt log!
 			// It will automatically return `true` in tests since this requires user intervention
