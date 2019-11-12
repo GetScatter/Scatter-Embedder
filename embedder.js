@@ -222,7 +222,7 @@ class Embedder {
 		const versionCheck = await Embedder.checkServerClientVersionRequirement();
 		if(!versionCheck) return NOTIFIER(
 			`You need to update your client!`,
-			`The update you are trying to install requires that you also update your native (desktop/mobile/extension) client.`
+			`The update you are trying to install requires that you also update your native (desktop/mobile/extension) client. Please visit https://get-scatter.com and get the latest version for your device.`
 		);
 
 		const filesList = await Embedder.getServerFilesList();
