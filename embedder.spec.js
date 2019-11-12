@@ -56,7 +56,16 @@ describe('embedder', () => {
 
 	it('should instantiate properly', done => {
 		new Promise(async () => {
-			Embedder.init(HOST, PROOFS, FILES, HASHER, NOTIFIER, PROMPTER, SIGNATURE_CHECKER, HASH_EVENT);
+			Embedder.init('12.0.0', HOST, PROOFS, FILES, HASHER, NOTIFIER, PROMPTER, SIGNATURE_CHECKER, HASH_EVENT);
+			done();
+		})
+	})
+
+	it('should check if a client version is matching or above', done => {
+		new Promise(async () => {
+			const passed = await Embedder.checkServerClientVersionRequirement();
+			console.log('passed', passed);
+			assert(passed, 'The server client version requirement was not met.')
 			done();
 		})
 	})

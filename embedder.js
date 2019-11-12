@@ -1,4 +1,4 @@
-let HOST, PROOF_KEYS, NOTIFIER, PROMPTER, FILES, LOCAL_TESTING, SIGNATURE_CHECKER, SHA256, HASH_EVENT;
+let CLIENT_VERSION, HOST, PROOF_KEYS, NOTIFIER, PROMPTER, FILES, LOCAL_TESTING, SIGNATURE_CHECKER, SHA256, HASH_EVENT;
 let ETAGS = {};
 
 const FILE_SERVICE_FNS = ['getFilesForDirectory', 'getDefaultPath', 'saveFile', 'openFile', 'existsOrMkdir', 'exists'];
@@ -13,6 +13,7 @@ const cacheETAG = async (filename, tag) => {
 const getSource = async (filename, method = "GET", tries = 0) => {
 	const result = await (async() => Promise.race([
 		fetch(`${HOST}/${filename}?rand=${Math.floor(Math.random()*999999)}`, {method, cache:"no-cache"}).then(async x => {
+			if(x.status !== 200) return null;
 			return {etag:x.headers.get('etag'), file:await x.text()};
 		}).catch(err => {
 			console.error('source error', filename, err);
@@ -21,13 +22,13 @@ const getSource = async (filename, method = "GET", tries = 0) => {
 		new Promise(r =>
 			setTimeout(
 				() => r(null),
-				5000 * (filename === 'vendor.bundle.js' ? 3 : 1)
+				5000 * (filename === 'vendor.bundle.js' ? 5 : 1)
 			)
 		),
 	]))();
 
 	if(!result && tries > 3) return null;
-	else if (!result && tries <= 3) return getSource(filename, method, tries++);
+	else if (!result && tries <= 3) return getSource(filename, method, tries+1);
 	else return result;
 };
 
@@ -88,6 +89,7 @@ const alignImportableHosts = (file, revert = false) => {
 class Embedder {
 
 	static init(
+		clientVersion,
 		host,
 		proofKeys,
 		fileService,
@@ -98,6 +100,7 @@ class Embedder {
 		hashEvent = null,
 		localTesting = false
 	) {
+		CLIENT_VERSION = clientVersion;
 		HOST = host;
 		PROOF_KEYS = proofKeys;
 		FILES = fileService;
@@ -143,6 +146,17 @@ class Embedder {
 	static async hasLocalVersion(){
 		if(LOCAL_TESTING) return true;
 		return FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/embed.timestamp`).then(x => !!x).catch(() => null)
+	}
+
+	static async checkServerClientVersionRequirement(){
+		const serverClientVersion = await getSource(`min.version`).then(x => x.file).catch(() => null);
+		if(!serverClientVersion) return false;
+		if(serverClientVersion === CLIENT_VERSION) return true;
+
+		const minVersion = serverClientVersion.split('.').map(x => parseInt(x));
+		const currentVersion = CLIENT_VERSION.split('.').map(x => parseInt(x));
+
+		return minVersion.every((x, i) => x <= currentVersion[i]);
 	}
 
 	// Checks if a version is available using a timestamp file which matches when the
@@ -204,6 +218,12 @@ class Embedder {
 	static async cacheEmbedFiles(cacheFromScratch = false){
 		let error = null;
 		let verified = 0;
+
+		const versionCheck = await Embedder.checkServerClientVersionRequirement();
+		if(!versionCheck) return NOTIFIER(
+			`You need to update your client!`,
+			`The update you are trying to install requires that you also update your native (desktop/mobile/extension) client.`
+		);
 
 		const filesList = await Embedder.getServerFilesList();
 		if(!filesList) return NOTIFIER(ERR_TITLE, API_ERR);
