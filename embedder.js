@@ -144,13 +144,13 @@ class Embedder {
 	// Checks if the user has a timestamp file locally at all,
 	// which is always the last file that is cached.
 	static async hasLocalVersion(){
-		if(LOCAL_TESTING) return false;
+		if(LOCAL_TESTING) return true;
 		return FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/embed.timestamp`).then(x => !!x).catch(() => null)
 	}
 
 	static async checkServerClientVersionRequirement(){
 		const serverClientVersion = await getSource(`min.version`).then(x => x.file).catch(() => null);
-		if(serverClientVersion === null) return null;
+		if(!serverClientVersion) return false;
 		if(serverClientVersion === CLIENT_VERSION) return true;
 
 		const minVersion = serverClientVersion.split('.').map(x => parseInt(x));
@@ -162,7 +162,7 @@ class Embedder {
 	// Checks if a version is available using a timestamp file which matches when the
 	// server had it's code updated.
 	static async versionAvailable(){
-		if(LOCAL_TESTING) return true;
+		if(LOCAL_TESTING) return false;
 
 		const localTimestamp = await FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/embed.timestamp`).catch(() => null);
 		if(!localTimestamp) return true;
@@ -220,17 +220,12 @@ class Embedder {
 		let verified = 0;
 
 		const versionCheck = await Embedder.checkServerClientVersionRequirement();
-		// Version check will be null for older servers.
-		if(versionCheck !== null){
-			if(!LOCAL_TESTING && !versionCheck) return NOTIFIER(
-				`You need to update your client!`,
-				`The update you are trying to install requires that you also update your native (desktop/mobile/extension) client. Please visit https://get-scatter.com and get the latest version for your device.`
-			);
-		}
-
+		if(!versionCheck) return NOTIFIER(
+			`You need to update your client!`,
+			`The update you are trying to install requires that you also update your native (desktop/mobile/extension) client. Please visit https://get-scatter.com and get the latest version for your device.`
+		);
 
 		const filesList = await Embedder.getServerFilesList();
-		console.log('filesList', filesList);
 		if(!filesList) return NOTIFIER(ERR_TITLE, API_ERR);
 
 		const etagsFile = cacheFromScratch ? null : await FILES.openFile(`${await FILES.getDefaultPath()}/etags.json`).catch(() => null);
