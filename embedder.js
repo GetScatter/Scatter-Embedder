@@ -59,7 +59,7 @@ const checkSignature = async (hashed, signed) => {
 	return proven;
 }
 
-const filterFiles = x => (x.indexOf('js') > -1 || x.indexOf('html') > -1 || x.indexOf('css') > -1) && x.indexOf('etags') === -1;
+const filterFiles = x => (x.indexOf('.js') > -1 || x.indexOf('.html') > -1 || x.indexOf('.css') > -1) && x.indexOf('.etags') === -1 && x.indexOf('.version') === -1;
 
 const hashStat = async (filename, verified, filesLength) => {
 	const hashstat = {hash:await SHA256(filename), verified, total:filesLength};
@@ -130,7 +130,7 @@ class Embedder {
 	static async getServerFilesList(){
 		if(LOCAL_TESTING){
 			// From a local server this pull from a `files.json` file
-			return await fetch(`${HOST}/files.json?rand=${Math.floor(Math.random()*99999)}`).then(x => x.json()).catch(() => null);
+			return await fetch(`${HOST}/files.json?rand=${Math.floor(Math.random()*99999)}`).then(x => x.json()).then(x => x.filter(filterFiles)).catch(() => null);
 		} else {
 			// From a real server this pulls from directory listing
 			return await fetch(`${HOST}/hashes/`).then(x => x.json()).then(x =>
@@ -144,13 +144,13 @@ class Embedder {
 	// Checks if the user has a timestamp file locally at all,
 	// which is always the last file that is cached.
 	static async hasLocalVersion(){
-		if(LOCAL_TESTING) return true;
+		if(LOCAL_TESTING) return false;
 		return FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/embed.timestamp`).then(x => !!x).catch(() => null)
 	}
 
 	static async checkServerClientVersionRequirement(){
 		const serverClientVersion = await getSource(`min.version`).then(x => x.file).catch(() => null);
-		if(!serverClientVersion) return false;
+		if(serverClientVersion === null) return null;
 		if(serverClientVersion === CLIENT_VERSION) return true;
 
 		const minVersion = serverClientVersion.split('.').map(x => parseInt(x));
@@ -162,7 +162,7 @@ class Embedder {
 	// Checks if a version is available using a timestamp file which matches when the
 	// server had it's code updated.
 	static async versionAvailable(){
-		if(LOCAL_TESTING) return false;
+		if(LOCAL_TESTING) return true;
 
 		const localTimestamp = await FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/embed.timestamp`).catch(() => null);
 		if(!localTimestamp) return true;
@@ -209,10 +209,14 @@ class Embedder {
 		return verified === filesList.length;
 	}
 
-	// TODO: Remove old files from previous builds which are no longer needed.
-	// Otherwise they will conflict with `checkCachedHashes` since files on the server would be missing.
-	static async removeDanglingFiles(){
-
+	// Removes old files.
+	static async removeDanglingFiles(filesList){
+		const localFiles = await this.getLocalFiles();
+		await Promise.all(localFiles.map(async filename => {
+			if(!filesList.includes(filename)){
+				FILES.removeFile(`${await FILES.getDefaultPath()}/cached_sources/${filename}`);
+			}
+		}));
 	}
 
 	static async cacheEmbedFiles(cacheFromScratch = false){
@@ -220,13 +224,20 @@ class Embedder {
 		let verified = 0;
 
 		const versionCheck = await Embedder.checkServerClientVersionRequirement();
-		if(!versionCheck) return NOTIFIER(
-			`You need to update your client!`,
-			`The update you are trying to install requires that you also update your native (desktop/mobile/extension) client. Please visit https://get-scatter.com and get the latest version for your device.`
-		);
+		// Version check will be null for older servers.
+		if(versionCheck !== null){
+			if(!LOCAL_TESTING && !versionCheck) return NOTIFIER(
+				`You need to update your client!`,
+				`The update you are trying to install requires that you also update your native (desktop/mobile/extension) client. Please visit https://get-scatter.com and get the latest version for your device.`
+			);
+		}
+
 
 		const filesList = await Embedder.getServerFilesList();
+		console.log('filesList', filesList);
 		if(!filesList) return NOTIFIER(ERR_TITLE, API_ERR);
+
+		this.removeDanglingFiles(filesList);
 
 		const etagsFile = cacheFromScratch ? null : await FILES.openFile(`${await FILES.getDefaultPath()}/etags.json`).catch(() => null);
 		if(etagsFile) ETAGS = JSON.parse(etagsFile);
@@ -279,7 +290,10 @@ class Embedder {
 		};
 
 		await Promise.all(filesList.map(async filename => {
-			if(!await checkFile(filename)) return error = HASH_ERR;
+			if(!await checkFile(filename)) {
+				console.log('file', filename);
+				return error = HASH_ERR;
+			}
 			else {
 				verified++;
 				hashStat(filename, verified, filesList.length);
