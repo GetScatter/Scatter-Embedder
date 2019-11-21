@@ -234,7 +234,6 @@ class Embedder {
 
 
 		const filesList = await Embedder.getServerFilesList();
-		console.log('filesList', filesList);
 		if(!filesList) return NOTIFIER(ERR_TITLE, API_ERR);
 
 		this.removeDanglingFiles(filesList);
@@ -291,7 +290,7 @@ class Embedder {
 
 		await Promise.all(filesList.map(async filename => {
 			if(!await checkFile(filename)) {
-				console.log('file', filename);
+				// console.log('file', filename);
 				return error = HASH_ERR;
 			}
 			else {
