@@ -120,7 +120,7 @@ class Embedder {
 
 	static async getLocalFiles(){
 		return await FILES.getFilesForDirectory(`${await FILES.getDefaultPath()}/cached_sources`)
-			.then(files => files.filter(filterFiles))
+			.then(files => files.filter(filterFiles)).catch(() => []);
 	}
 
 	// Simply gets a list of files that need verification.
