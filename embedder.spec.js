@@ -64,7 +64,6 @@ describe('embedder', () => {
 	it('should check if a client version is matching or above', done => {
 		new Promise(async () => {
 			const passed = await Embedder.checkServerClientVersionRequirement();
-			console.log('passed', passed);
 			assert(passed, 'The server client version requirement was not met.')
 			done();
 		})

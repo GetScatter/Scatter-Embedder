@@ -32,9 +32,12 @@ const getSource = async (filename, method = "GET", tries = 0) => {
 	else return result;
 };
 
+const MAX_TRIES = 5;
+
 const ERR_TITLE = 'Scatter Embed Check Failure';
 const WEB_APP_ERR = `Your desktop client could not make a connection with our web wallet embed, so it can't verify that it is safe to use. If you are in a country which restricts IPs such as China or Russia, you may need to enable a proxy.`;
 const API_ERR = `Scatter failed to make a connection with our API which is used to verify the hash of the web wallet embed. If you are in a country which restricts IPs such as China or Russia, you may need to enable a proxy.`
+const FILES_LIST_ERR = `Scatter failed to get a list of files available for the latest embedded version.`
 const HASH_ERR = `The hash created from the web wallet embed does not match the hash returned from our secure API. This could be due to an update happening right now. Please try again in a moment. If this problem persists please contact support immediately at support@get-scatter.com, or on Telegram on the @Scatter channel, or Twitter at @Get_Scatter.`
 
 
@@ -173,11 +176,14 @@ class Embedder {
 
 	// Hashes and signatures are fetched on a round-robin basis, so each hash+sig for a file is gotten
 	// from a different server than the one the file was fetched from.
-	static async fileVerified(filename, file){
+	static async fileVerified(filename, file, tries = 0){
 		if(LOCAL_TESTING) return true;
 
 		const hashsig = await getSource(`hashes/${filename}.hash`).then(x => x.file.trim()).catch(() => null);
-		if(!hashsig) return false;
+		if(!hashsig) {
+			if(tries < MAX_TRIES) return this.fileVerified(filename, file, tries++);
+			return false;
+		}
 
 		const [hashed, signed] = hashsig.split('|').map(x => x.trim());
 		return (await SHA256(file)) === hashed && await checkSignature(hashed, signed);
@@ -189,7 +195,7 @@ class Embedder {
 		let verified = 0;
 
 		const filesList = await Embedder.getServerFilesList();
-		if(!filesList) return NOTIFIER(ERR_TITLE, API_ERR);
+		if(!filesList) return NOTIFIER(ERR_TITLE, FILES_LIST_ERR);
 
 		await Promise.all(filesList.map(async filename => {
 
@@ -234,7 +240,7 @@ class Embedder {
 
 
 		const filesList = await Embedder.getServerFilesList();
-		if(!filesList) return NOTIFIER(ERR_TITLE, API_ERR);
+		if(!filesList) return NOTIFIER(ERR_TITLE, FILES_LIST_ERR);
 
 		this.removeDanglingFiles(filesList);
 
@@ -242,13 +248,16 @@ class Embedder {
 		if(etagsFile) ETAGS = JSON.parse(etagsFile);
 
 
-		const checkFileHash = async (filename) => {
+		const checkFileHash = async (filename, tries = 0) => {
 			if(error) return false;
 
 			// Sources are fetched on a round-robin basis, so each file is gotten
 			// from a different server, making the attack surface as large as our server count.
 			const result = await getSource(filename).catch(() => null);
-			if(!result || !result.file.length) return error = WEB_APP_ERR;
+			if(!result || !result.file.length) {
+				if(tries < MAX_TRIES) return checkFileHash(filename, tries++);
+				return error = WEB_APP_ERR;
+			}
 
 			if(await this.fileVerified(filename, result.file)){
 				await cacheETAG(filename, result.etag);
@@ -258,7 +267,10 @@ class Embedder {
 				// Saving the source locally for quicker use and fallback for later hash verification failures.
 				// This makes it so the user's local Scatter can never "not work" just because the online Embed is down.
 				return await saveSource(filename, result.file);
-			} else error = API_ERR;
+			} else {
+				if(tries < MAX_TRIES) return checkFileHash(filename, tries++);
+				error = API_ERR;
+			}
 
 			return false;
 		};
@@ -269,16 +281,20 @@ class Embedder {
 		// Scatter will simply not download their malicious version of the file as it will
 		// use the one locally stored on the user's machine and not the one with the spoofed
 		// ETAG.
-		const checkEtag = async (filename) => {
+		const checkEtag = async (filename, tries = 0) => {
 			// In testing ETAGs don't exist.
 			if(LOCAL_TESTING) return false;
 
 			if(error) return false;
 			if(ETAGS.hasOwnProperty(filename) && ETAGS[filename]){
 				const result = await getSource(filename, "HEAD").catch(() => null);
-				if(!result) return error = WEB_APP_ERR;
+				if(!result) {
+					if(tries < MAX_TRIES) return checkEtag(filename, tries++);
+					return false;
+				}
 				return result.etag === ETAGS[filename];
 			}
+
 			return false;
 		};
 
@@ -289,10 +305,7 @@ class Embedder {
 		};
 
 		await Promise.all(filesList.map(async filename => {
-			if(!await checkFile(filename)) {
-				// console.log('file', filename);
-				return error = HASH_ERR;
-			}
+			if(!await checkFile(filename)) return error = HASH_ERR;
 			else {
 				verified++;
 				hashStat(filename, verified, filesList.length);
