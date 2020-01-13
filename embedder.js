@@ -181,7 +181,7 @@ class Embedder {
 
 		const hashsig = await getSource(`hashes/${filename}.hash`).then(x => x.file.trim()).catch(() => null);
 		if(!hashsig) {
-			if(tries < MAX_TRIES) return this.fileVerified(filename, file, tries++);
+			if(tries < MAX_TRIES) return this.fileVerified(filename, file, tries+1);
 			return false;
 		}
 
@@ -255,7 +255,7 @@ class Embedder {
 			// from a different server, making the attack surface as large as our server count.
 			const result = await getSource(filename).catch(() => null);
 			if(!result || !result.file.length) {
-				if(tries < MAX_TRIES) return checkFileHash(filename, tries++);
+				if(tries < MAX_TRIES) return checkFileHash(filename, tries+1);
 				return error = WEB_APP_ERR;
 			}
 
@@ -268,7 +268,7 @@ class Embedder {
 				// This makes it so the user's local Scatter can never "not work" just because the online Embed is down.
 				return await saveSource(filename, result.file);
 			} else {
-				if(tries < MAX_TRIES) return checkFileHash(filename, tries++);
+				if(tries < MAX_TRIES) return checkFileHash(filename, tries+1);
 				error = API_ERR;
 			}
 
@@ -289,7 +289,7 @@ class Embedder {
 			if(ETAGS.hasOwnProperty(filename) && ETAGS[filename]){
 				const result = await getSource(filename, "HEAD").catch(() => null);
 				if(!result) {
-					if(tries < MAX_TRIES) return checkEtag(filename, tries++);
+					if(tries < MAX_TRIES) return checkEtag(filename, tries+1);
 					return false;
 				}
 				return result.etag === ETAGS[filename];
