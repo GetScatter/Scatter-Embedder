@@ -103,6 +103,8 @@ class Embedder {
 		hashEvent = null,
 		localTesting = false
 	) {
+		if(host.substr(-1) === '/') host = host.substr(0, host.length-1);
+
 		CLIENT_VERSION = clientVersion;
 		HOST = host;
 		PROOF_KEYS = proofKeys;
