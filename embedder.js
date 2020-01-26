@@ -1,4 +1,6 @@
-let CLIENT_VERSION, HOST, PROOF_KEYS, NOTIFIER, PROMPTER, FILES, LOCAL_TESTING, SIGNATURE_CHECKER, SHA256, HASH_EVENT;
+const yauzl = require("yauzl");
+
+let CLIENT_VERSION, HOST, REPO, PROOF_KEYS, NOTIFIER, PROMPTER, FILES, LOCAL_TESTING, SIGNATURE_CHECKER, SHA256, HASH_EVENT;
 let ETAGS = {};
 
 const FILE_SERVICE_FNS = ['getFilesForDirectory', 'getDefaultPath', 'saveFile', 'openFile', 'existsOrMkdir', 'exists'];
@@ -89,11 +91,21 @@ const alignImportableHosts = (file, revert = false) => {
 	return file;
 };
 
+
+
+
+const getReleaseInfo = async (repo = 'Bridge') => {
+	return fetch(`https://api.github.com/repos/GetScatter/${repo}/releases/latest`).then(x => x.json()).catch(() => null);
+}
+
+// getReleaseInfo().then(x => console.log(x))
+
+
 class Embedder {
 
 	static init(
 		clientVersion,
-		host,
+		repo = 'Bridge',
 		proofKeys,
 		fileService,
 		sha256er,
@@ -103,10 +115,9 @@ class Embedder {
 		hashEvent = null,
 		localTesting = false
 	) {
-		if(host.substr(-1) === '/') host = host.substr(0, host.length-1);
-
 		CLIENT_VERSION = clientVersion;
-		HOST = host;
+		REPO = repo;
+		HOST = REPO === 'Bridge' ? 'https://bridge.get-scatter.com' : 'https://embed.get-scatter.com';
 		PROOF_KEYS = proofKeys;
 		FILES = fileService;
 		SHA256 = sha256er;
@@ -123,230 +134,91 @@ class Embedder {
 		if(!SHA256 || typeof SHA256 !== 'function') throw new Error('Sha256 must be a function.');
 	}
 
-	static async getLocalFiles(){
-		return await FILES.getFilesForDirectory(`${await FILES.getDefaultPath()}/cached_sources`)
-			.then(files => files.filter(filterFiles)).catch(() => []);
-	}
-
-	// Simply gets a list of files that need verification.
-	// If this list is spoofed, Scatter simply won't run as it will be missing files.
-	// And in the case of adding files to the list, those files will never be executed
-	// as there would be nothing to execute them since normal files are hash verified.
-	static async getServerFilesList(){
-		if(LOCAL_TESTING){
-			// From a local server this pull from a `files.json` file
-			return await fetch(`${HOST}/files.json?rand=${Math.floor(Math.random()*99999)}`).then(x => x.json()).then(x => x.filter(filterFiles)).catch(() => null);
-		} else {
-			// From a real server this pulls from directory listing
-			return await fetch(`${HOST}/hashes/`).then(x => x.json()).then(x =>
-				x.map(y => y.name.replace('.hash', ''))
-				// Only showing js/html/css files.
-					.filter(filterFiles)
-			).catch(() => null);
-		}
-	}
-
 	// Checks if the user has a timestamp file locally at all,
 	// which is always the last file that is cached.
 	static async hasLocalVersion(){
 		if(LOCAL_TESTING) return false;
-		return FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/embed.timestamp`).then(x => !!x).catch(() => null)
+		return FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/release.tag`).then(x => !!x).catch(() => null)
 	}
 
-	static async checkServerClientVersionRequirement(){
-		const serverClientVersion = await getSource(`min.version`).then(x => x.file).catch(() => null);
-		if(serverClientVersion === null) return null;
-		if(serverClientVersion === CLIENT_VERSION) return true;
+	static async getZip(info){
+		return new Promise(async (resolve, reject) => {
+			hashStat('Scatter Update', 0, 1);
+			const downloadUrl = info.assets.find(x => x.name.indexOf('.zip') > -1).browser_download_url;
+			const [repoTag, signed, ext] = downloadUrl.split('/')[downloadUrl.split('/').length-1].split('.');
+			const buf = await fetch(downloadUrl, { headers:{ 'Content-type':'application/zip' } })
+				.then(x => x.buffer()).catch(err => console.error(err));
+			if(!buf) return resolve(null);
 
-		const minVersion = serverClientVersion.split('.').map(x => parseInt(x));
-		const currentVersion = CLIENT_VERSION.split('.').map(x => parseInt(x));
-
-		return minVersion.every((x, i) => x <= currentVersion[i]);
+			const hash = SHA256(buf);
+			if(!await checkSignature(hash, signed)) return resolve(null);
+			hashStat('Scatter Update', 1, 1);
+			return buf;
+		})
 	}
 
-	// Checks if a version is available using a timestamp file which matches when the
-	// server had it's code updated.
-	static async versionAvailable(){
-		if(LOCAL_TESTING) return true;
-
-		const localTimestamp = await FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/embed.timestamp`).catch(() => null);
-		if(!localTimestamp) return true;
-		const serverTimestamp = await getSource(`hashes/embed.timestamp`).then(x => x.file.trim()).catch(() => null);
-		if(!serverTimestamp) return true;
-		return localTimestamp.trim() !== serverTimestamp.trim();
-	}
-
-	// Hashes and signatures are fetched on a round-robin basis, so each hash+sig for a file is gotten
-	// from a different server than the one the file was fetched from.
-	static async fileVerified(filename, file, tries = 0){
-		if(LOCAL_TESTING) return true;
-
-		const hashsig = await getSource(`hashes/${filename}.hash`).then(x => x.file.trim()).catch(() => null);
-		if(!hashsig) {
-			if(tries < MAX_TRIES) return this.fileVerified(filename, file, tries+1);
-			return false;
-		}
-
-		const [hashed, signed] = hashsig.split('|').map(x => x.trim());
-		return (await SHA256(file)) === hashed && await checkSignature(hashed, signed);
-	}
-
-	static async checkCachedHashes(){
-		if(LOCAL_TESTING) return true;
-
-		let verified = 0;
-
-		const filesList = await Embedder.getServerFilesList();
-		if(!filesList) return NOTIFIER(ERR_TITLE, FILES_LIST_ERR);
-
-		await Promise.all(filesList.map(async filename => {
-
-			let file = await FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/${filename}`).catch(() => null);
-			if(!file) return console.log('missing file', filename, file);
-
-			file = alignImportableHosts(file, true);
-
-			if(await this.fileVerified(filename, file)) verified++;
-			else console.log('bad verification', filename)
-
-			hashStat(filename, verified, filesList.length);
-
-			return true;
-		}));
-
-		return verified === filesList.length;
-	}
-
-	// Removes old files.
-	static async removeDanglingFiles(filesList){
-		const localFiles = await this.getLocalFiles();
-		await Promise.all(localFiles.map(async filename => {
-			if(!filesList.includes(filename)){
-				FILES.removeFile(`${await FILES.getDefaultPath()}/cached_sources/${filename}`);
-			}
-		}));
-	}
-
-	static async cacheEmbedFiles(cacheFromScratch = false){
-		let error = null;
-		let verified = 0;
-
-		const versionCheck = await Embedder.checkServerClientVersionRequirement();
-		// Version check will be null for older servers.
-		if(versionCheck !== null){
-			if(!LOCAL_TESTING && !versionCheck) return NOTIFIER(
-				`You need to update your client!`,
-				`The update you are trying to install requires that you also update your native (desktop/mobile/extension) client. Please visit https://get-scatter.com and get the latest version for your device.`
-			);
-		}
-
-
-		const filesList = await Embedder.getServerFilesList();
-		if(!filesList) return NOTIFIER(ERR_TITLE, FILES_LIST_ERR);
-
-		this.removeDanglingFiles(filesList);
-
-		const etagsFile = cacheFromScratch ? null : await FILES.openFile(`${await FILES.getDefaultPath()}/etags.json`).catch(() => null);
-		if(etagsFile) ETAGS = JSON.parse(etagsFile);
-
-
-		const checkFileHash = async (filename, tries = 0) => {
-			if(error) return false;
-
-			// Sources are fetched on a round-robin basis, so each file is gotten
-			// from a different server, making the attack surface as large as our server count.
-			const result = await getSource(filename).catch(() => null);
-			if(!result || !result.file.length) {
-				if(tries < MAX_TRIES) return checkFileHash(filename, tries+1);
-				return error = WEB_APP_ERR;
-			}
-
-			if(await this.fileVerified(filename, result.file)){
-				await cacheETAG(filename, result.etag);
-
-				result.file = alignImportableHosts(result.file);
-
-				// Saving the source locally for quicker use and fallback for later hash verification failures.
-				// This makes it so the user's local Scatter can never "not work" just because the online Embed is down.
-				return await saveSource(filename, result.file);
-			} else {
-				if(tries < MAX_TRIES) return checkFileHash(filename, tries+1);
-				error = API_ERR;
-			}
-
-			return false;
-		};
-
-		// If an ETAG already exists on the user's local machine then
-		// Scatter won't try to refresh the Embed file.
-		// This is completely safe to rely on since even if a malicious server spoofs the ETAG
-		// Scatter will simply not download their malicious version of the file as it will
-		// use the one locally stored on the user's machine and not the one with the spoofed
-		// ETAG.
-		const checkEtag = async (filename, tries = 0) => {
-			// In testing ETAGs don't exist.
-			if(LOCAL_TESTING) return false;
-
-			if(error) return false;
-			if(ETAGS.hasOwnProperty(filename) && ETAGS[filename]){
-				const result = await getSource(filename, "HEAD").catch(() => null);
-				if(!result) {
-					if(tries < MAX_TRIES) return checkEtag(filename, tries+1);
-					return false;
-				}
-				return result.etag === ETAGS[filename];
-			}
-
-			return false;
-		};
-
-		const checkFile = async filename => {
-			if(error) return false;
-			if(!cacheFromScratch && await checkEtag(filename) && await FILES.exists(`${await FILES.getDefaultPath()}/cached_sources/${filename}`)) return true;
-			else return await checkFileHash(filename);
-		};
-
-		await Promise.all(filesList.map(async filename => {
-			if(!await checkFile(filename)) return error = HASH_ERR;
-			else {
-				verified++;
-				hashStat(filename, verified, filesList.length);
-			}
-		}));
-
-		if(error) return NOTIFIER(ERR_TITLE, error);
-
-		if(verified === filesList.length){
-			// Lack of a timestamp doesn't mean no validation occurred.
-			await getSource(`hashes/embed.timestamp`).then(x => {
-				return saveSource('embed.timestamp', x.file.trim()).catch(() => null);
-			}).catch(() => null);
-
-			return true;
-		}
-
-		return false;
+	static async unzip(buf){
+		return new Promise(async (resolve, reject) => {
+			yauzl.fromBuffer(buf, {lazyEntries:true}, (err, zipfile) => {
+				if (err) return resolve(console.error(err));
+				zipfile.readEntry();
+				zipfile.on("entry", (entry) => {
+					try {
+						// DIR
+						if (/\/$/.test(entry.fileName)) zipfile.readEntry();
+						// FILE
+						else zipfile.openReadStream(entry, (err, stream) => {
+							if (err) return resolve(console.error(err));
+							let filedata = '';
+							stream.on('data',data => filedata += data.toString());
+							stream.on("end", async () => {
+								filedata = alignImportableHosts(filedata);
+								await saveSource(entry.fileName, filedata);
+								hashStat(entry.fileName, zipfile.entriesRead, zipfile.entryCount);
+								if(zipfile.entriesRead === zipfile.entryCount) return resolve(true);
+								else zipfile.readEntry();
+							});
+						});
+					} catch(e){
+						console.error(e);
+					}
+				});
+			});
+		})
 	}
 
 	static async check(){
 		let hasEmbed = false;
 
-		const updateLocalFiles = async (cacheFromScratch = false) => {
-			if(!await Embedder.cacheEmbedFiles(cacheFromScratch)){
+		const latestRelease = await getReleaseInfo();
+		if(!latestRelease) return NOTIFIER('Could not get release information.', 'There was an issue getting the latest release information from our API or GitHub. Please try again later.');
+
+
+		const updateLocalFiles = async () => {
+			const zipBuffer = await Embedder.getZip();
+			if(!zipBuffer){
 				hasEmbed = await PROMPTER(
 					'There was an issue getting the latest Embed version.',
 					'Would you like to keep using your locally cached version of Scatter Embed which has already been verified previously?'
 				);
-			} else hasEmbed = true;
+			} else {
+				await Embedder.unzip(zipBuffer);
+				hasEmbed = true;
+			}
 			return true;
 		};
 
-		if(await Embedder.versionAvailable()){
+		const versionAvailable = async () => {
+			if(LOCAL_TESTING) return true;
+
+			const localReleaseTag = await FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/release.tag`).catch(() => null);
+			return latestRelease.tag_name.trim() !== localReleaseTag.trim();
+		};
+
+		if(await versionAvailable()){
 			// User doesn't have a local version,
 			// so they must grab the version.
-			if(!await Embedder.hasLocalVersion()){
-				hasEmbed = await Embedder.cacheEmbedFiles();
-			}
+			if(!await Embedder.hasLocalVersion()) hasEmbed = await updateLocalFiles();
 
 			// User has a local version, so they can choose to
 			// update their local version to the next one.
@@ -357,22 +229,7 @@ class Embedder {
 				)) await updateLocalFiles();
 				else hasEmbed = true;
 			}
-		} else {
-			// Checking if the user's local file hashes match the ones on the server.
-			if(await Embedder.checkCachedHashes()) hasEmbed = true;
-
-			// If they don't then we will notify the user and allow them to
-			// either continue using their local files, or re-pull the version from
-			// the web.
-			else {
-				if(!await PROMPTER(
-					'Some of your local files had mismatched hashes.',
-					`It looks like some of the files you have locally don't match the hashes of the current embed version, but your version says it's up to date.
-				 Do you want to continue using your local version instead of trying to re-pull the current embed?`
-				)) hasEmbed = true;
-				else await updateLocalFiles(true);
-			}
-		}
+		} else hasEmbed = true;
 
 		return hasEmbed;
 	}
