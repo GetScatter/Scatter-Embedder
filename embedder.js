@@ -5,41 +5,10 @@ let ETAGS = {};
 
 const FILE_SERVICE_FNS = ['getFilesForDirectory', 'getDefaultPath', 'saveFile', 'openFile', 'existsOrMkdir', 'exists'];
 
-const cacheETAG = async (filename, tag) => {
-	ETAGS[filename] = tag;
-	await FILES.existsOrMkdir(await FILES.getDefaultPath());
-	await FILES.saveFile(await FILES.getDefaultPath(), 'etags.json', JSON.stringify(ETAGS));
-	return true;
-}
-
-const getSource = async (filename, method = "GET", tries = 0) => {
-	const result = await (async() => Promise.race([
-		fetch(`${HOST}/${filename}?rand=${Math.floor(Math.random()*999999)}`, {method, cache:"no-cache"}).then(async x => {
-			if(x.status !== 200) return null;
-			return {etag:x.headers.get('etag'), file:await x.text()};
-		}).catch(err => {
-			console.error('source error', filename, err);
-			return null;
-		}),
-		new Promise(r =>
-			setTimeout(
-				() => r(null),
-				5000 * (filename === 'vendor.bundle.js' ? 5 : 1)
-			)
-		),
-	]))();
-
-	if(!result && tries > 3) return null;
-	else if (!result && tries <= 3) return getSource(filename, method, tries+1);
-	else return result;
-};
-
 const MAX_TRIES = 5;
 
 const ERR_TITLE = 'Scatter Embed Check Failure';
-const WEB_APP_ERR = `Your desktop client could not make a connection with our web wallet embed, so it can't verify that it is safe to use. If you are in a country which restricts IPs such as China or Russia, you may need to enable a proxy.`;
 const API_ERR = `Scatter failed to make a connection with our API which is used to verify the hash of the web wallet embed. If you are in a country which restricts IPs such as China or Russia, you may need to enable a proxy.`
-const FILES_LIST_ERR = `Scatter failed to get a list of files available for the latest embedded version.`
 const HASH_ERR = `The hash created from the web wallet embed does not match the hash returned from our secure API. This could be due to an update happening right now. Please try again in a moment. If this problem persists please contact support immediately at support@get-scatter.com, or on Telegram on the @Scatter channel, or Twitter at @Get_Scatter.`
 
 
@@ -72,33 +41,31 @@ const hashStat = async (filename, verified, filesLength) => {
 	else console.log('hashstat', hashstat);
 };
 
-const alignImportableHosts = (file, revert = false) => {
-	if(!revert){
-
-		// Applying absolute URLs to relative static assets.
-		// Note: These files won't be available if Embed is down, however they are all purely aesthetic.
-		// This saves the user from download another 3+mb of data which will be static anyway.
-		file = file.replace(/static\/assets\//g, `${HOST}/static/assets/`);
-		file = file.replace(/static\/fonts\/fa-/g, `${HOST}/static/fonts/fa-`);
-	} else {
-		// We need to revert the static absolute path overwrites for this to verify hashes properly.
-		// file = file.replace(/https:\/\/embed.get-scatter.com\/static\/assets\//g, "static/assets/");
-		// file = file.replace(/https:\/\/embed.get-scatter.com\/static\/fonts\//g, "static/fonts/");
-		file = file.replace(new RegExp(`${HOST.replace(/\//, '\\/')}\/static\/assets\/`, 'g'), "static/assets/");
-		file = file.replace(new RegExp(`${HOST.replace(/\//, '\\/')}\/static\/fonts\/fa-`, 'g'), "static/fonts/fa-");
-	}
-
+const alignImportableHosts = (file) => {
+	file = file.replace(new RegExp(`${HOST.replace(/\//, '\\/')}\/static\/assets\/`, 'g'), "static/assets/");
+	file = file.replace(new RegExp(`${HOST.replace(/\//, '\\/')}\/static\/fonts\/fa-`, 'g'), "static/fonts/fa-");
+	console.log('aligned file', HOST)
 	return file;
 };
 
 
 
 
-const getReleaseInfo = async (repo = 'Bridge') => {
-	return fetch(`https://api.github.com/repos/GetScatter/${repo}/releases/latest`).then(x => x.json()).catch(() => null);
+const getReleaseInfo = async (lastModified) => {
+	console.log(lastModified);
+	return fetch(`https://api.github.com/repos/GetScatter/${REPO}/releases/latest`, {
+		headers:{ "If-Modified-Since":lastModified }
+	}).then(async x => {
+		console.log('status', x.headers);
+		if(x.status === 304) return {notModified:true};
+		if(x.status !== 200) return null;
+		return {
+			newLastModified:x.headers.get('last-modified'),
+			json:await x.json(),
+			notModified:false,
+		}
+	}).catch(() => null);
 }
-
-// getReleaseInfo().then(x => console.log(x))
 
 
 class Embedder {
@@ -134,11 +101,24 @@ class Embedder {
 		if(!SHA256 || typeof SHA256 !== 'function') throw new Error('Sha256 must be a function.');
 	}
 
+	// Removes old files.
+	static async removeOldFiles(){
+		const localFiles = await FILES.getFilesForDirectory(`${await FILES.getDefaultPath()}/cached_sources`).catch(() => []);
+		await Promise.all(localFiles.map(async filename => {
+			return FILES.removeFile(`${await FILES.getDefaultPath()}/cached_sources/${filename}`);
+		}));
+	}
+
 	// Checks if the user has a timestamp file locally at all,
 	// which is always the last file that is cached.
 	static async hasLocalVersion(){
 		if(LOCAL_TESTING) return false;
 		return FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/release.tag`).then(x => !!x).catch(() => null)
+	}
+
+	static async lastModified(){
+		if(LOCAL_TESTING) return false;
+		return FILES.openFile(`${await FILES.getDefaultPath()}/cached_sources/modified.tag`).catch(() => null)
 	}
 
 	static async getZip(info){
@@ -151,9 +131,12 @@ class Embedder {
 			if(!buf) return resolve(null);
 
 			const hash = SHA256(buf);
-			if(!await checkSignature(hash, signed)) return resolve(null);
+			if(!await checkSignature(hash, signed)) {
+				NOTIFIER(ERR_TITLE, HASH_ERR);
+				return resolve(null);
+			}
 			hashStat('Scatter Update', 1, 1);
-			return buf;
+			return resolve(buf);
 		})
 	}
 
@@ -190,22 +173,33 @@ class Embedder {
 	static async check(){
 		let hasEmbed = false;
 
-		const latestRelease = await getReleaseInfo();
-		if(!latestRelease) return NOTIFIER('Could not get release information.', 'There was an issue getting the latest release information from our API or GitHub. Please try again later.');
+		const hasLocalVersion = await Embedder.hasLocalVersion();
+
+		const lastModified = hasLocalVersion ? await Embedder.lastModified() : null;
+		const {json:latestRelease, newLastModified, notModified} = await getReleaseInfo(lastModified);
+		if(notModified && hasLocalVersion) return true;
+
+		if(!latestRelease) {
+			NOTIFIER(ERR_TITLE, API_ERR);
+			return false;
+		}
 
 
 		const updateLocalFiles = async () => {
-			const zipBuffer = await Embedder.getZip();
+			const zipBuffer = await Embedder.getZip(latestRelease);
+
 			if(!zipBuffer){
 				hasEmbed = await PROMPTER(
 					'There was an issue getting the latest Embed version.',
 					'Would you like to keep using your locally cached version of Scatter Embed which has already been verified previously?'
 				);
 			} else {
+				await Embedder.removeOldFiles();
 				await Embedder.unzip(zipBuffer);
+				await saveSource('release.tag', latestRelease.tag_name);
+				await saveSource('modified.tag', newLastModified);
 				hasEmbed = true;
 			}
-			return true;
 		};
 
 		const versionAvailable = async () => {
@@ -215,21 +209,17 @@ class Embedder {
 			return latestRelease.tag_name.trim() !== localReleaseTag.trim();
 		};
 
-		if(await versionAvailable()){
-			// User doesn't have a local version,
-			// so they must grab the version.
-			if(!await Embedder.hasLocalVersion()) hasEmbed = await updateLocalFiles();
+		if(!hasLocalVersion) await updateLocalFiles();
 
-			// User has a local version, so they can choose to
-			// update their local version to the next one.
-			else {
-				if(await PROMPTER(
+		else {
+			if (await versionAvailable()) {
+				if (await PROMPTER(
 					'An updated Scatter Embed is available.',
 					'There is an updated version of Scatter Embed available. Do you want to use it?'
 				)) await updateLocalFiles();
 				else hasEmbed = true;
-			}
-		} else hasEmbed = true;
+			} else hasEmbed = true;
+		}
 
 		return hasEmbed;
 	}
