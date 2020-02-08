@@ -41,8 +41,8 @@ const sendProgress = (msg) => {
 };
 
 const alignImportableHosts = (file) => {
-	file = file.replace(new RegExp(`${HOST.replace(/\//, '\\/')}\/static\/assets\/`, 'g'), "static/assets/");
-	file = file.replace(new RegExp(`${HOST.replace(/\//, '\\/')}\/static\/fonts\/fa-`, 'g'), "static/fonts/fa-");
+	file = file.replace(/static\/assets\//g, `${HOST}/static/assets/`);
+	file = file.replace(/static\/fonts\/fa-/g, `${HOST}/static/fonts/fa-`);
 	return file;
 };
 
