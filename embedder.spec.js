@@ -42,7 +42,7 @@ const PROMPTER = async (title, text) => {
 };
 const SIGNATURE_CHECKER = (hashed, signed) => PROOFS[0];
 const HASHER = x => ecc.sha256(x);
-const HASH_EVENT = () => {}
+const PROGRESS_EVENT = (msg) => console.log(msg);
 
 describe('embedder', () => {
 
@@ -56,84 +56,38 @@ describe('embedder', () => {
 
 	it('should instantiate properly', done => {
 		new Promise(async () => {
-			Embedder.init('12.0.0', HOST, PROOFS, FILES, HASHER, NOTIFIER, PROMPTER, SIGNATURE_CHECKER, HASH_EVENT);
+			Embedder.init('12.0.0', 'Bridge', PROOFS, FILES, HASHER, NOTIFIER, PROMPTER, SIGNATURE_CHECKER, PROGRESS_EVENT);
 			done();
 		})
 	})
 
-	// it('should check if a client version is matching or above', done => {
-	// 	new Promise(async () => {
-	// 		const passed = await Embedder.checkServerClientVersionRequirement();
-	// 		assert(passed, 'The server client version requirement was not met.')
-	// 		done();
-	// 	})
-	// })
-	//
-	// it('should check if there is a local version [fail test]', done => {
-	// 	new Promise(async () => {
-	// 		assert(!await Embedder.hasLocalVersion(), 'There was a local version when there should NOT have been.')
-	// 		done();
-	// 	})
-	// })
-	//
-	// it('should cache files locally', done => {
-	// 	new Promise(async () => {
-	// 		assert(await Embedder.check(), 'There was an error caching local files.');
-	// 		done();
-	// 	})
-	// });
-	//
-	// it('should check if there is a local version', done => {
-	// 	new Promise(async () => {
-	// 		assert(await Embedder.hasLocalVersion(), 'There was NOT a local version when there should have been.')
-	// 		done();
-	// 	})
-	// })
-	//
-	// it('should not need a new version', done => {
-	// 	new Promise(async () => {
-	// 		assert(!await Embedder.versionAvailable(), 'Embedder says there is a new version even though there is not.')
-	// 		done();
-	// 	})
-	// })
-	//
-	// it('should notice that a local file is tampered with', done => {
-	// 	new Promise(async () => {
-	// 		const localFiles = await Embedder.getLocalFiles();
-	// 		await fs.appendFileSync(`${await FILES.getDefaultPath()}/${localFiles[0]}`, 'breakme');
-	//
-	// 		// Check console for prompt log!
-	// 		// It will automatically return `true` in tests since this requires user intervention
-	// 		await Embedder.check();
-	//
-	// 		assert(await Embedder.checkCachedHashes(), 'The local files were not corrected.');
-	// 		done();
-	// 	})
-	// })
-	//
-	// it('should notice that a local file is deleted', done => {
-	// 	new Promise(async () => {
-	// 		const localFiles = await Embedder.getLocalFiles();
-	// 		await fs.unlinkSync(`${await FILES.getDefaultPath()}/${localFiles[0]}`);
-	//
-	// 		// Check console for prompt log!
-	// 		// It will automatically return `true` in tests since this requires user intervention
-	// 		await Embedder.check();
-	//
-	// 		assert(await Embedder.checkCachedHashes(), 'The local files were not corrected.');
-	// 		done();
-	// 	})
-	// })
-	//
-	// it('should say there is a new version if the timestamp is in the past', done => {
-	// 	new Promise(async () => {
-	// 		await FILES.saveFile(`${await FILES.getDefaultPath()}/cached_sources`, 'embed.timestamp', '10000');
-	//
-	// 		// Check console for prompt log!
-	// 		// It will automatically return `true` in tests since this requires user intervention
-	// 		assert(await Embedder.check(), 'Version was not updated.');
-	// 		done();
-	// 	})
-	// })
+
+	it('should check if there is a local version [fail test]', done => {
+		new Promise(async () => {
+			assert(!await Embedder.hasLocalVersion(), 'There was a local version when there should NOT have been.')
+			done();
+		})
+	})
+
+	it('should cache files locally', done => {
+		new Promise(async () => {
+			assert(await Embedder.check(), 'There was an error caching local files.');
+			done();
+		})
+	});
+
+	it('should check if there is a local version', done => {
+		new Promise(async () => {
+			assert(await Embedder.hasLocalVersion(), 'There was NOT a local version when there should have been.')
+			done();
+		})
+	})
+
+	it('should not need a new version', done => {
+		new Promise(async () => {
+			assert(!await Embedder.versionAvailable(), 'Embedder says there is a new version even though there is not.')
+			done();
+		})
+	})
 
 });

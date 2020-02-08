@@ -1,6 +1,6 @@
 const yauzl = require("yauzl");
 
-let CLIENT_VERSION, HOST, REPO, PROOF_KEYS, NOTIFIER, PROMPTER, FILES, LOCAL_TESTING, SIGNATURE_CHECKER, SHA256, HASH_EVENT;
+let CLIENT_VERSION, HOST, REPO, PROOF_KEYS, NOTIFIER, PROMPTER, FILES, LOCAL_TESTING, SIGNATURE_CHECKER, SHA256, PROGRESS_EVENT;
 let ETAGS = {};
 
 const FILE_SERVICE_FNS = ['getFilesForDirectory', 'getDefaultPath', 'saveFile', 'openFile', 'existsOrMkdir', 'exists'];
@@ -35,16 +35,14 @@ const checkSignature = async (hashed, signed) => {
 
 const filterFiles = x => (x.indexOf('.js') > -1 || x.indexOf('.html') > -1 || x.indexOf('.css') > -1) && x.indexOf('.etags') === -1 && x.indexOf('.version') === -1;
 
-const hashStat = async (filename, verified, filesLength) => {
-	const hashstat = {hash:await SHA256(filename), verified, total:filesLength};
-	if(HASH_EVENT) HASH_EVENT(hashstat);
-	else console.log('hashstat', hashstat);
+const sendProgress = (msg) => {
+	if(PROGRESS_EVENT) PROGRESS_EVENT(msg);
+	else console.log('PROGRESS_EVENT', msg);
 };
 
 const alignImportableHosts = (file) => {
 	file = file.replace(new RegExp(`${HOST.replace(/\//, '\\/')}\/static\/assets\/`, 'g'), "static/assets/");
 	file = file.replace(new RegExp(`${HOST.replace(/\//, '\\/')}\/static\/fonts\/fa-`, 'g'), "static/fonts/fa-");
-	console.log('aligned file', HOST)
 	return file;
 };
 
@@ -53,10 +51,27 @@ const alignImportableHosts = (file) => {
 
 const getReleaseInfo = async (lastModified) => {
 	console.log(lastModified);
+
+	// Trying to fetch from the host first.
+	const zipInfo = await fetch(`${HOST}/zip.json`, {
+		headers:{ "If-Modified-Since":lastModified }
+	}).then(async x => {
+		if(x.status === 304) return {notModified:true};
+		if(x.status !== 200) return null;
+		return {
+			newLastModified:x.headers.get('last-modified'),
+			json:await x.json(),
+			notModified:false,
+		}
+	}).catch(() => null);
+
+	if(zipInfo) return zipInfo;
+	else console.warn(`Can't get zip data from ${HOST}, trying GitHub.`);
+
+	// If fetching from host fails, trying to fetch directly from github releases.
 	return fetch(`https://api.github.com/repos/GetScatter/${REPO}/releases/latest`, {
 		headers:{ "If-Modified-Since":lastModified }
 	}).then(async x => {
-		console.log('status', x.headers);
 		if(x.status === 304) return {notModified:true};
 		if(x.status !== 200) return null;
 		return {
@@ -79,7 +94,7 @@ class Embedder {
 		notifier = (title, text) => console.log('Notifier: ', title, text),
 		prompter = (title, text) => console.log('Prompt: ', title, text),
 		signatureChecker = (hashed, signed) => console.log('Signature Checker: ', hashed, signed),
-		hashEvent = null,
+		progressEvent = null,
 		localTesting = false
 	) {
 		CLIENT_VERSION = clientVersion;
@@ -93,7 +108,7 @@ class Embedder {
 		SIGNATURE_CHECKER = signatureChecker;
 
 		// Optionals
-		HASH_EVENT = hashEvent;
+		PROGRESS_EVENT = progressEvent;
 		LOCAL_TESTING = localTesting;
 
 		if(!PROOF_KEYS.length) throw new Error('You must include Proofing Keys');
@@ -122,20 +137,22 @@ class Embedder {
 	}
 
 	static async getZip(info){
+
 		return new Promise(async (resolve, reject) => {
-			hashStat('Scatter Update', 0, 1);
+			sendProgress('Downloading new version...');
 			const downloadUrl = info.assets.find(x => x.name.indexOf('.zip') > -1).browser_download_url;
-			const [repoTag, signed, ext] = downloadUrl.split('/')[downloadUrl.split('/').length-1].split('.');
+			const [repoTag, signature, ext] = downloadUrl.split('/')[downloadUrl.split('/').length-1].split('.');
 			const buf = await fetch(downloadUrl, { headers:{ 'Content-type':'application/zip' } })
 				.then(x => x.buffer()).catch(err => console.error(err));
 			if(!buf) return resolve(null);
 
 			const hash = SHA256(buf);
-			if(!await checkSignature(hash, signed)) {
+			if(!await checkSignature(hash, signature)) {
 				NOTIFIER(ERR_TITLE, HASH_ERR);
 				return resolve(null);
 			}
-			hashStat('Scatter Update', 1, 1);
+
+			sendProgress('Finished downloading new version!');
 			return resolve(buf);
 		})
 	}
@@ -157,7 +174,7 @@ class Embedder {
 							stream.on("end", async () => {
 								filedata = alignImportableHosts(filedata);
 								await saveSource(entry.fileName, filedata);
-								hashStat(entry.fileName, zipfile.entriesRead, zipfile.entryCount);
+								sendProgress(`Unpacking version file ${zipfile.entriesRead} of ${zipfile.entryCount}`);
 								if(zipfile.entriesRead === zipfile.entryCount) return resolve(true);
 								else zipfile.readEntry();
 							});
@@ -175,6 +192,7 @@ class Embedder {
 
 		const hasLocalVersion = await Embedder.hasLocalVersion();
 
+		sendProgress('Checking for new versions.');
 		const lastModified = hasLocalVersion ? await Embedder.lastModified() : null;
 		const {json:latestRelease, newLastModified, notModified} = await getReleaseInfo(lastModified);
 		if(notModified && hasLocalVersion) return true;
