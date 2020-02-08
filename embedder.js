@@ -1,6 +1,6 @@
 const yauzl = require("yauzl");
 
-let CLIENT_VERSION, HOST, REPO, PROOF_KEYS, NOTIFIER, PROMPTER, FILES, LOCAL_TESTING, SIGNATURE_CHECKER, SHA256, PROGRESS_EVENT;
+let CLIENT_VERSION, HOST, REPO, PROOF_KEYS, NOTIFIER, PROMPTER, FILES, LOCAL_TESTING, SIGNATURE_CHECKER, SHA256, PROGRESS_EVENT, IS_STAGING;
 let ETAGS = {};
 
 const FILE_SERVICE_FNS = ['getFilesForDirectory', 'getDefaultPath', 'saveFile', 'openFile', 'existsOrMkdir', 'exists'];
@@ -50,8 +50,6 @@ const alignImportableHosts = (file) => {
 
 
 const getReleaseInfo = async (lastModified) => {
-	console.log(lastModified);
-
 	// Trying to fetch from the host first.
 	const zipInfo = await fetch(`${HOST}/zip.json`, {
 		headers:{ "If-Modified-Since":lastModified }
@@ -95,11 +93,13 @@ class Embedder {
 		prompter = (title, text) => console.log('Prompt: ', title, text),
 		signatureChecker = (hashed, signed) => console.log('Signature Checker: ', hashed, signed),
 		progressEvent = null,
-		localTesting = false
+		localTesting = false,
+		staging = false,
 	) {
+		IS_STAGING = staging;
 		CLIENT_VERSION = clientVersion;
 		REPO = repo;
-		HOST = REPO === 'Bridge' ? 'https://bridge.get-scatter.com' : 'https://embed.get-scatter.com';
+		HOST = `https://${IS_STAGING ? 'staging.' : ''}` + (REPO === 'Bridge' ? `bridge.get-scatter.com` : `embed.get-scatter.com`);
 		PROOF_KEYS = proofKeys;
 		FILES = fileService;
 		SHA256 = sha256er;
