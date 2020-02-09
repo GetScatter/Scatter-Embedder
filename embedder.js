@@ -207,9 +207,9 @@ class Embedder {
 		const date = new Date();
 		const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 		const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-		const hour = date.getHours(),
-			minute = date.getMinutes(),
-			second = date.getSeconds(),
+		const hour = date.getUTCHours(),
+			minute = date.getUTCMinutes(),
+			second = date.getUTCSeconds(),
 			hourFormatted = hour < 12 ? "0" + hour % 12 || 12 : hour % 12 || 12,
 			minuteFormatted = minute < 10 ? "0" + minute : minute,
 			morning = hour < 12 ? "am" : "pm";
