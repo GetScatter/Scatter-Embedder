@@ -141,7 +141,7 @@ class Embedder {
 		return new Promise(async (resolve, reject) => {
 			sendProgress('Downloading new version...');
 			const downloadUrl = info.assets.find(x => x.name.indexOf('.zip') > -1).browser_download_url;
-			const [repoTag, signature, ext] = downloadUrl.split('/')[downloadUrl.split('/').length-1].split('.');
+			const [repoTag, tagName, signature, ext] = downloadUrl.split('/')[downloadUrl.split('/').length-1].split('.');
 			const buf = await fetch(downloadUrl, { headers:{ 'Content-type':'application/zip' } })
 				.then(x => x.buffer()).catch(err => console.error(err));
 			if(!buf) return resolve(null);
@@ -185,6 +185,40 @@ class Embedder {
 				});
 			});
 		})
+	}
+
+	static async loadManualZipFile(zipBuffer, signature, releaseTag){
+		if(!zipBuffer) return false;
+		sendProgress('Checking zip file.');
+
+		const hash = SHA256(zipBuffer);
+		if(!await checkSignature(hash, signature)) {
+			NOTIFIER(ERR_TITLE, HASH_ERR);
+			return false;
+		}
+
+
+		sendProgress('Loading zip file.');
+
+		await Embedder.removeOldFiles();
+		await Embedder.unzip(zipBuffer);
+		await saveSource('release.tag', releaseTag);
+
+		const date = new Date();
+		const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+		const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+		const hour = date.getHours(),
+			minute = date.getMinutes(),
+			second = date.getSeconds(),
+			hourFormatted = hour < 12 ? "0" + hour % 12 || 12 : hour % 12 || 12,
+			minuteFormatted = minute < 10 ? "0" + minute : minute,
+			morning = hour < 12 ? "am" : "pm";
+
+		// Just faking a last modification header.
+		const lastModified = `${DAYS[date.getDay()]}, ${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()} ${hourFormatted}:${minuteFormatted}:${second} GMT`;
+		await saveSource('modified.tag', lastModified);
+		sendProgress('Zip file loaded successfully!');
+		return true;
 	}
 
 	static async check(){
