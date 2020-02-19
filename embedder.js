@@ -7,7 +7,7 @@ const FILE_SERVICE_FNS = ['getFilesForDirectory', 'getDefaultPath', 'saveFile', 
 
 const MAX_TRIES = 5;
 
-const ERR_TITLE = 'Scatter Embed Check Failure';
+const ERR_TITLE = 'Scatter Check Failure';
 const API_ERR = `Scatter failed to make a connection with our API which is used to verify the hash of the web wallet embed. If you are in a country which restricts IPs such as China or Russia, you may need to enable a proxy.`
 const HASH_ERR = `The hash created from the web wallet embed does not match the hash returned from our secure API. This could be due to an update happening right now. Please try again in a moment. If this problem persists please contact support immediately at support@get-scatter.com, or on Telegram on the @Scatter channel, or Twitter at @Get_Scatter.`
 
@@ -242,8 +242,8 @@ class Embedder {
 
 			if(!zipBuffer){
 				hasEmbed = await PROMPTER(
-					'There was an issue getting the latest Embed version.',
-					'Would you like to keep using your locally cached version of Scatter Embed which has already been verified previously?'
+					'There was an issue getting the latest embed version.',
+					'Would you like to keep using your locally cached version of Scatter which has already been verified previously?'
 				);
 			} else {
 				await Embedder.removeOldFiles();
@@ -266,8 +266,8 @@ class Embedder {
 		else {
 			if (await versionAvailable()) {
 				if (await PROMPTER(
-					'An updated Scatter Embed is available.',
-					'There is an updated version of Scatter Embed available. Do you want to use it?'
+					'An updated Scatter is available.',
+					'There is an updated version of Scatter available. Do you want to update automatically?'
 				)) await updateLocalFiles();
 				else hasEmbed = true;
 			} else hasEmbed = true;
