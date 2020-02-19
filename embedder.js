@@ -141,7 +141,7 @@ class Embedder {
 		return new Promise(async (resolve, reject) => {
 			sendProgress('Downloading new version...');
 			const downloadUrl = info.assets.find(x => x.name.indexOf('.zip') > -1).browser_download_url;
-			const [repoTag, tagName, signature, ext] = downloadUrl.split('/')[downloadUrl.split('/').length-1].split('.');
+			const [repoTag, version, tagName, signature, ext] = downloadUrl.split('/')[downloadUrl.split('/').length-1].split('.');
 			const buf = await fetch(downloadUrl, { headers:{ 'Content-type':'application/zip' } })
 				.then(x => x.buffer()).catch(err => console.error(err));
 			if(!buf) return resolve(null);
