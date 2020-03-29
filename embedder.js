@@ -1,6 +1,6 @@
 const yauzl = require("yauzl");
 
-let CLIENT_VERSION, HOST, REPO, PROOF_KEYS, NOTIFIER, PROMPTER, FILES, LOCAL_TESTING, SIGNATURE_CHECKER, SHA256, PROGRESS_EVENT, IS_STAGING;
+let CLIENT_VERSION, REPO, PROOF_KEYS, NOTIFIER, PROMPTER, FILES, LOCAL_TESTING, SIGNATURE_CHECKER, SHA256, PROGRESS_EVENT, IS_STAGING;
 let ETAGS = {};
 
 const FILE_SERVICE_FNS = ['getFilesForDirectory', 'getDefaultPath', 'saveFile', 'openFile', 'existsOrMkdir', 'exists'];
@@ -40,32 +40,10 @@ const sendProgress = (msg) => {
 	else console.log('PROGRESS_EVENT', msg);
 };
 
-const alignImportableHosts = (file) => {
-	file = file.replace(/static\/assets\//g, `${HOST}/static/assets/`);
-	file = file.replace(/static\/fonts\/fa-/g, `${HOST}/static/fonts/fa-`);
-	return file;
-};
-
 
 
 
 const getReleaseInfo = async (lastModified) => {
-	// Trying to fetch from the host first.
-	const zipInfo = await fetch(`${HOST}/zip.json`, {
-		headers:{ "If-Modified-Since":lastModified }
-	}).then(async x => {
-		if(x.status === 304) return {notModified:true};
-		if(x.status !== 200) return null;
-		return {
-			newLastModified:x.headers.get('last-modified'),
-			json:await x.json(),
-			notModified:false,
-		}
-	}).catch(() => null);
-
-	if(zipInfo) return zipInfo;
-	else console.warn(`Can't get zip data from ${HOST}, trying GitHub.`);
-
 	// If fetching from host fails, trying to fetch directly from github releases.
 	return fetch(`https://api.github.com/repos/GetScatter/${REPO}/releases/latest`, {
 		headers:{ "If-Modified-Since":lastModified }
@@ -99,7 +77,6 @@ class Embedder {
 		IS_STAGING = staging;
 		CLIENT_VERSION = clientVersion;
 		REPO = repo;
-		HOST = `https://${IS_STAGING ? 'staging.' : ''}` + (REPO === 'Bridge' ? `bridge.get-scatter.com` : `embed.get-scatter.com`);
 		PROOF_KEYS = proofKeys;
 		FILES = fileService;
 		SHA256 = sha256er;
@@ -172,7 +149,6 @@ class Embedder {
 							let filedata = '';
 							stream.on('data',data => filedata += data.toString());
 							stream.on("end", async () => {
-								filedata = alignImportableHosts(filedata);
 								await saveSource(entry.fileName, filedata);
 								sendProgress(`Unpacking version file ${zipfile.entriesRead} of ${zipfile.entryCount}`);
 								if(zipfile.entriesRead === zipfile.entryCount) return resolve(true);

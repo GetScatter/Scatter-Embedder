@@ -83,11 +83,4 @@ describe('embedder', () => {
 		})
 	})
 
-	it('should not need a new version', done => {
-		new Promise(async () => {
-			assert(!await Embedder.versionAvailable(), 'Embedder says there is a new version even though there is not.')
-			done();
-		})
-	})
-
 });
