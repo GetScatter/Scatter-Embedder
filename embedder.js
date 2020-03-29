@@ -204,14 +204,14 @@ class Embedder {
 
 		sendProgress('Checking for new versions.');
 		const lastModified = hasLocalVersion ? await Embedder.lastModified() : null;
-		const {json:latestRelease, newLastModified, notModified} = await getReleaseInfo(lastModified);
-		if(notModified && hasLocalVersion) return true;
-
-		if(!latestRelease) {
+		const releaseInfo = await getReleaseInfo(lastModified);
+		if(!releaseInfo){
 			NOTIFIER(ERR_TITLE, API_ERR);
 			return false;
 		}
 
+		const {json:latestRelease, newLastModified, notModified} = releaseInfo;
+		if(notModified && hasLocalVersion) return true;
 
 		const updateLocalFiles = async () => {
 			const zipBuffer = await Embedder.getZip(latestRelease);
