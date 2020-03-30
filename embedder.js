@@ -13,7 +13,6 @@ const HASH_ERR = `The signature used to validate this zip file does not match th
 
 
 const saveSource = async (filename, file) => {
-	console.log('filename', filename);
 	let sourcePath = `${await FILES.getDefaultPath()}/cached_sources`;
 	if(filename.indexOf('/') > -1){
 		const parts = filename.split('/');
