@@ -121,8 +121,13 @@ class Embedder {
 	static async getZip(info){
 
 		return new Promise(async (resolve, reject) => {
-			sendProgress('Downloading new version...');
-			const downloadUrl = info.assets.find(x => x.name.indexOf('.zip') > -1).browser_download_url;
+			const asset = info.assets.find(x => x.name.indexOf('.zip') > -1);
+			if(!asset){
+				NOTIFIER(ERR_TITLE, `It looks like the new version does not yet have an asset file. Please try again soon.`);
+				return resolve(null);
+			}
+			sendProgress(`Downloading user-interface <br> <p>This may take a few minutes.</p>`);
+			const downloadUrl = asset.browser_download_url;
 			const [repoTag, tagName, signature, ext] = downloadUrl.split('/')[downloadUrl.split('/').length-1].split('.');
 			const buf = await fetch(downloadUrl, { headers:{ 'Content-type':'application/zip' } })
 				.then(x => x.buffer()).catch(err => console.error(err));
