@@ -161,7 +161,7 @@ class Embedder {
 							stream.on("end", async () => {
 								const buf = Buffer.concat(bufs);
 								await saveSource(entry.fileName, buf);
-								sendProgress(`Unpacking version file ${zipfile.entriesRead} of ${zipfile.entryCount}`);
+								sendProgress(`Unpacking ${zipfile.entriesRead} of ${zipfile.entryCount}`);
 								if(zipfile.entriesRead === zipfile.entryCount) return resolve(true);
 								else zipfile.readEntry();
 							});
