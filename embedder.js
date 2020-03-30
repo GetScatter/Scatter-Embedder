@@ -8,12 +8,18 @@ const FILE_SERVICE_FNS = ['getFilesForDirectory', 'getDefaultPath', 'saveFile', 
 const MAX_TRIES = 5;
 
 const ERR_TITLE = 'Scatter Check Failure';
-const API_ERR = `Scatter failed to make a connection with our API which is used to verify the hash of the web wallet embed. If you are in a country which restricts IPs such as China or Russia, you may need to enable a proxy.`
-const HASH_ERR = `The hash created from the web wallet embed does not match the hash returned from our secure API. This could be due to an update happening right now. Please try again in a moment. If this problem persists please contact support immediately at support@get-scatter.com, or on Telegram on the @Scatter channel, or Twitter at @Get_Scatter.`
+const API_ERR = `Scatter could not check GitHub for new releases.`
+const HASH_ERR = `The signature used to validate this zip file does not match the hash of the zip file.`
 
 
 const saveSource = async (filename, file) => {
-	const sourcePath = `${await FILES.getDefaultPath()}/cached_sources`;
+	console.log('filename', filename);
+	let sourcePath = `${await FILES.getDefaultPath()}/cached_sources`;
+	if(filename.indexOf('/') > -1){
+		const parts = filename.split('/');
+		filename = parts.pop();
+		sourcePath += '/' + parts.join('/');
+	}
 	await FILES.existsOrMkdir(sourcePath);
 	return FILES.saveFile(sourcePath, filename, file);
 };
@@ -146,10 +152,11 @@ class Embedder {
 						// FILE
 						else zipfile.openReadStream(entry, (err, stream) => {
 							if (err) return resolve(console.error(err));
-							let filedata = '';
-							stream.on('data',data => filedata += data.toString());
+							let bufs = [];
+							stream.on('data',data => bufs.push(data));
 							stream.on("end", async () => {
-								await saveSource(entry.fileName, filedata);
+								const buf = Buffer.concat(bufs);
+								await saveSource(entry.fileName, buf);
 								sendProgress(`Unpacking version file ${zipfile.entriesRead} of ${zipfile.entryCount}`);
 								if(zipfile.entriesRead === zipfile.entryCount) return resolve(true);
 								else zipfile.readEntry();
