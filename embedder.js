@@ -1,6 +1,6 @@
 const yauzl = require("yauzl");
 
-let CLIENT_VERSION, REPO, PROOF_KEYS, NOTIFIER, PROMPTER, FILES, LOCAL_TESTING, SIGNATURE_CHECKER, SHA256, PROGRESS_EVENT, IS_STAGING;
+let CLIENT_VERSION, REPO, PROOF_KEYS, NOTIFIER, PROMPTER, FILES, LOCAL_TESTING, SIGNATURE_CHECKER, SHA256, PROGRESS_EVENT;
 let ETAGS = {};
 
 const FILE_SERVICE_FNS = ['getFilesForDirectory', 'getDefaultPath', 'saveFile', 'openFile', 'existsOrMkdir', 'exists'];
@@ -77,9 +77,7 @@ class Embedder {
 		signatureChecker = (hashed, signed) => console.log('Signature Checker: ', hashed, signed),
 		progressEvent = null,
 		localTesting = false,
-		staging = false,
 	) {
-		IS_STAGING = staging;
 		CLIENT_VERSION = clientVersion;
 		REPO = repo;
 		PROOF_KEYS = proofKeys;
