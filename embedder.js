@@ -51,7 +51,7 @@ const sendProgress = (msg) => {
 const getReleaseInfo = async (lastModified) => {
 	// If fetching from host fails, trying to fetch directly from github releases.
 	return fetch(`https://api.github.com/repos/GetScatter/${REPO}/releases/latest`, {
-		headers:{ "If-Modified-Since":lastModified }
+		headers:{ "If-Modified-Since":lastModified.trim() }
 	}).then(async x => {
 		if(x.status === 304) return {notModified:true};
 		if(x.status !== 200) return null;
@@ -60,7 +60,10 @@ const getReleaseInfo = async (lastModified) => {
 			json:await x.json(),
 			notModified:false,
 		}
-	}).catch(() => null);
+	}).catch(err => {
+		console.error(err);
+		return null;
+	});
 }
 
 
